@@ -1,0 +1,20 @@
+# shells & histories
+.zsh_history
+.bash_history
+.lesshst
+
+# zsh caches
+.zcompdump*
+*.zwc
+
+# editors / misc
+.viminfo
+.vscode-server/
+.cache/
+
+# ssh (never commit private keys)
+.ssh/
+
+# distro/motd noise
+.motd_shown
+.sudo_as_admin_successful
