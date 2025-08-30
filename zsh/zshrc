@@ -17,7 +17,7 @@ ZSH_THEME="robbyrussell"
 # ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
 
 # Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
+CASE_SENSITIVE="true"
 
 # Uncomment the following line to use hyphen-insensitive completion.
 # Case-sensitive completion must be off. _ and - will be interchangeable.
@@ -25,7 +25,7 @@ ZSH_THEME="robbyrussell"
 
 # Uncomment one of the following lines to change the auto-update behavior
 # zstyle ':omz:update' mode disabled  # disable automatic updates
-# zstyle ':omz:update' mode auto      # update automatically without asking
+zstyle ':omz:update' mode auto      # update automatically without asking
 # zstyle ':omz:update' mode reminder  # just remind me to update when it's time
 
 # Uncomment the following line to change how often to auto-update (in days).
@@ -100,7 +100,27 @@ source $ZSH/oh-my-zsh.sh
 # For a full list of active aliases, run `alias`.
 #
 # Example aliases
-# alias zshconfig="mate ~/.zshrc"
-# alias ohmyzsh="mate ~/.oh-my-zsh"
-# health-check Sat Aug 30 16:42:17 UTC 2025
-alias dotok="echo dotfiles-ok"
+alias zshconfig="mate ~/.zshrc"
+alias ohmyzsh="mate ~/.oh-my-zsh"
+alias reload="source ~/.zshrc"
+alias c="clear"
+alias ls="ls --color=auto"
+alias ll="ls -la"
+alias la="ls -A"
+alias l="ls -CF"
+
+alias gs="git status"
+alias ga="git add ."
+alias gc="git commit -m"
+alias gp="git push"
+alias gl="git pull"
+alias gd="git diff"
+alias gco="git checkout"
+alias gcb="git checkout -b"
+alias gst="git stash"
+alias gpop="git stash pop"
+alias gcl="git clone"
+alias gb="git branch"
+alias gbr="git branch -r"
+alias gfa="git fetch --all --prune"
+alias gundo="git reset --soft HEAD~1"
