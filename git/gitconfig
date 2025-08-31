@@ -1,3 +1,13 @@
 [user]
 	email = 46199672+Rvkt@users.noreply.github.com
 	name = Ravi Kant
+
+[alias]
+	st = status
+	co = checkout
+	br = branch
+	cm = commit
+	df = diff
+	lg = log --oneline --graph --all --decorate
+	unstage = reset HEAD --
+	remote-web = "!git config --get remote.origin.url | sed -E 's/git@([^:]+):/https:\\/\\/\\1\\//; s/\\.git$//'"

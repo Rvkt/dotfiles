@@ -136,6 +136,7 @@ alias gb="git branch"
 alias gbr="git branch -r"
 alias gfa="git fetch --all --prune"
 alias gundo="git reset --soft HEAD~1"
+alias grurl="git remote-web"
 
 # fzf aliases
 alias fz="fzf"
