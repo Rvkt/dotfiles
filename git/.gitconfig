@@ -1,0 +1,119 @@
+# ======================================
+# 🧰 GIT GLOBAL CONFIGURATION
+# Maintainer : Ravi Kant
+# ======================================
+
+[core]
+    # ✏️ Default text editor
+    editor = nvim
+
+[user]
+    # 👤 User Info
+    name  = Ravi Kant
+    email = ravikant@softmintdigital.com
+
+[color]
+    ui = auto
+
+[color "branch"]
+    current = yellow
+    local   = cyan
+    remote  = red
+
+[push]
+    # 🚀 Automatically set upstream on first push
+    autoSetupRemote = true
+
+# --------------------------------------
+# ✅ Added enterprise-grade defaults
+# --------------------------------------
+[init]
+    # 🌱 Use modern default branch name
+    defaultBranch = main
+
+[receive]
+    # 🛡️ Prevent force-push overwrites on shared remotes
+    denyNonFastForwards = true
+
+[diff]
+    # 🎨 Clearer move detection in diffs
+    colorMoved = default
+
+[merge]
+    # 🧩 Show base/common ancestor during merge conflicts
+    conflictStyle = diff3
+
+[filter "lfs"]
+    process  = git-lfs filter-process
+    required = true
+    clean    = git-lfs clean -- %f
+    smudge   = git-lfs smudge -- %f
+
+[alias]
+    # ---------------------------------------------------
+    # 📜 LOGS & HISTORY
+    # ---------------------------------------------------
+    l        = log --oneline --graph --decorate --all
+    last     = log -1 HEAD --stat
+    find     = "!f() { git log --all --grep=\"$1\"; }; f"
+    changes  = diff --stat HEAD^ HEAD
+    recent   = "!git for-each-ref --sort=-committerdate refs/heads/ \
+                --format='%(refname:short) - %(committerdate:relative) - %(subject)' | head -n 10"
+    top      = "!git shortlog -sn --all --no-merges | head -n 10"
+    lg       = "!git log --graph --abbrev-commit --decorate --date=relative --all"
+    hist     = "!git log --pretty=format:'%h %ad | %s%d [%an]' --graph --date=short"
+
+    # ---------------------------------------------------
+    # 🌿 BRANCH MANAGEMENT
+    # ---------------------------------------------------
+    co       = checkout
+    cb       = "!f() { git checkout -b \"$1\" && git push -u origin \"$1\"; }; f"
+    dbr      = "!f() { git branch -D \"$1\" && git push origin --delete \"$1\"; }; f"
+    rb       = "!f() { git branch -m \"$1\" \"$2\" && git push origin :\"$1\" && git push -u origin \"$2\"; }; f"
+    cleanup  = "!git branch --merged | egrep -v '(^\\*|main|master|dev)' | xargs git branch -d"
+
+    # ---------------------------------------------------
+    # ✅ COMMITS
+    # ---------------------------------------------------
+    aa       = add .
+    cm       = commit -m
+    ca       = commit -am
+    cl       = clone
+    undo     = reset --soft HEAD~1
+    nuke     = reset --hard HEAD~1
+    squash   = "!f() { git reset --soft HEAD~$1 && git commit; }; f"
+    fix      = commit --amend --no-edit
+    reword   = commit --amend
+    fixup    = "!f() { git commit --fixup=$1; }; f"
+
+    # ---------------------------------------------------
+    # 📦 STASH HELPERS
+    # ---------------------------------------------------
+    ss       = "!f() { git stash save \"$1\"; }; f"
+    sl       = stash list
+    sa       = stash apply
+    sd       = stash drop
+
+    # ---------------------------------------------------
+    # 🌍 REMOTE & SYNC
+    # ---------------------------------------------------
+    f        = fetch origin
+    pl       = pull
+    psu      = push -u
+    rso      = remote show origin
+    sync     = "!git fetch --all --prune"
+    ccl      = "!f() { git clone \"$1\" && cd \"$(basename \"$1\" .git)\"; }; f"
+
+    # ---------------------------------------------------
+    # 🛠️ UTILITIES
+    # ---------------------------------------------------
+    s        = status --short
+    gcl      = config --global --list
+    tc       = "!f() { git tag -a \"$1\" \"$2\" -m \"$3\"; }; f"
+    dt       = "!f() { git tag -d $1 && git push --delete origin $1; }; f"
+    aliasify = "!f() { git config --global alias.$1 \"$2\"; }; f"
+    open     = "!git remote get-url origin | xargs -r start"
+    al       = "!git config --get-regexp ^alias\\\\."
+    type     = cat .git/config
+[credential]
+	helper = store

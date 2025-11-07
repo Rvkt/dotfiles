@@ -1,0 +1,53 @@
+# ============================================================
+# ZSH Aliases (Managed via Stow)
+# ============================================================
+
+# --- Navigation ---
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias ~="cd ~"
+
+# --- System / General ---
+alias ll="ls -la"
+alias la="ls -A"
+alias l="ls -CF"
+alias c="clear"
+alias cls="clear"
+alias reload="source ~/.zshrc"
+alias zshconfig="nvim ~/.zshrc"
+alias nv="nvim"
+alias update="brew update && brew upgrade && brew cleanup"
+
+# --- Git Shortcuts ---
+alias gs="git status"
+alias ga="git add ."
+alias gb="git branch"
+alias gc="git commit -m"
+alias gca="git commit --amend"
+alias gp="git push"
+alias gl="git pull"
+alias gco="git checkout"
+alias gd="git diff"
+alias gplog="git log --oneline --graph --decorate"
+
+# --- Flutter Shortcuts ---
+alias fr="flutter run"
+alias fb="flutter build"
+alias fc="flutter clean && flutter pub get"
+alias fup="flutter upgrade"
+alias fgen="flutter pub run build_runner build --delete-conflicting-outputs"
+
+# --- Development / Utils ---
+alias serve="python3 -m http.server"
+alias ports="lsof -i -P | grep LISTEN"
+alias flushdns="sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder"
+
+# --- Mac-Specific ---
+alias showhidden="defaults write com.apple.finder AppleShowAllFiles YES && killall Finder"
+alias hidehidden="defaults write com.apple.finder AppleShowAllFiles NO && killall Finder"
+alias cleanup="find . -type f -name '*.DS_Store' -delete"
+
+# ============================================================
+# End of File
+# ============================================================
