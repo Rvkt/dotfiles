@@ -16,7 +16,7 @@ ZSH_THEME="robbyrussell"
 zstyle ':omz:update' mode auto
 
 # Plugins
-plugins=(git)
+plugins=(git z)
 
 # Load Oh My Zsh
 source $ZSH/oh-my-zsh.sh
