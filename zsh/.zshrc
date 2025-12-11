@@ -61,6 +61,44 @@ fi
 # Handy defaults
 alias nv='nvim'
 
+
+# --- SSH Agent Bootstrap (WSL-Safe) --------------------------
+# Ensure ~/.ssh exists with safe perms
+if [ ! -d "$HOME/.ssh" ]; then
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh" 2>/dev/null || true
+fi
+
+# Start ssh-agent if it's not already running
+if ! pgrep -u "$USER" ssh-agent >/dev/null 2>&1; then
+  eval "$(ssh-agent -s)" >/dev/null 2>&1
+fi
+
+# Small wait loop so agent socket has a moment to appear (WSL timing)
+AGENT_TRIES=0
+while [ "$AGENT_TRIES" -lt 10 ] && ! ssh-add -l >/dev/null 2>&1; do
+  sleep 0.05
+  AGENT_TRIES=$((AGENT_TRIES + 1))
+done
+
+# Load WSL-specific SSH key if present and not already loaded.
+# We match by public-key fingerprint to avoid false negatives.
+if [ -f "$HOME/.ssh/wsl_git" ]; then
+  PUB="$HOME/.ssh/wsl_git.pub"
+  if [ -f "$PUB" ]; then
+    FPR=$(ssh-keygen -lf "$PUB" 2>/dev/null | awk '{print $2}')
+    if ! ssh-add -l 2>/dev/null | grep -q "$FPR"; then
+      ssh-add "$HOME/.ssh/wsl_git" >/dev/null 2>&1 || true
+    fi
+  else
+    # If public not available, fallback to attempting to add private key
+    if ! ssh-add -l 2>/dev/null | grep -q "wsl_git"; then
+      ssh-add "$HOME/.ssh/wsl_git" >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+
 # ============================================================
 # End of File
 # ============================================================
