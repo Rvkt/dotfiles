@@ -1,0 +1,102 @@
+# ~/.gitconfig / ~/dotfiles/gitconfig
+# See https://git-scm.com/docs/git-config
+
+[user]
+	name = rvkt
+	# email = your_email@example.com
+
+[init]
+	defaultBranch = main
+
+[core]
+	editor = nvim
+	autocrlf = input
+	whitespace = trailing-space,space-before-tab
+	excludesfile = ~/.config/git/ignore
+
+[alias]
+	# Status & Overview
+	st = status
+	s = status -s
+	br = branch
+	branches = branch -a
+	tags = tag -l
+
+	# Commit & Stage
+	ci = commit
+	cm = commit -m
+	ca = commit --amend
+	can = commit --amend --no-edit
+	unstage = reset HEAD --
+
+	# Checkout & Switch
+	co = checkout
+	sw = switch
+	cb = checkout -b
+
+	# Diff & Inspection
+	df = diff
+	dc = diff --cached
+	last = log -1 HEAD --stat
+
+	# Log & History Graph
+	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative
+	lga = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative --all
+	hist = log --pretty=format:'%C(yellow)%h%Creset %ad | %C(green)%s%d%Creset [%an]' --graph --date=short
+
+	# Push, Pull & Sync
+	p = push
+	pf = push --force-with-lease
+	up = pull --rebase --autostash
+
+	# Stash
+	sl = stash list
+	sp = stash pop
+	ss = stash save
+
+[pull]
+	rebase = true 			 # Rebase (instead of merge) on pull
+
+[push]
+	autoSetupRemote = true   # Automatically set upstream branch on push
+	default = current        # Push current branch to branch with same name
+	followTags = true        # Push relevant annotated tags
+
+[fetch]
+	prune = true             # Remove remote-tracking references that no longer exist
+	pruneTags = true         # Remove local tags that no longer exist on remote
+	all = true               # Fetch from all remotes
+
+[diff]
+	algorithm = histogram    # Clearer diffs on moved/edited lines
+	colorMoved = plain       # Highlight moved blocks in diffs
+	mnemonicPrefix = true    # More intuitive refs in diff output (i/w instead of a/b)
+	renames = copies         # Detect copies as well as renames
+
+[merge]
+	conflictstyle = zdiff3   # Show common ancestor in conflict markers
+
+[commit]
+	verbose = true           # Include diff comment in commit message template
+
+[column]
+	ui = auto 			     # Output in columns when possible
+
+[branch]
+	sort = -committerdate    # Sort branches by most recent commit first
+
+[tag]
+	sort = -version:refname  # Sort version numbers naturally (v1.2 before v1.10)
+
+[rerere]
+	enabled = true           # Record and reuse conflict resolutions
+	autoupdate = true        # Apply stored conflict resolutions automatically
+
+[help]
+	autocorrect = prompt     # Prompt for correction if typo in git command
+
+[color]
+	ui = auto
+	diff = auto
+	status = auto
+	branch = auto
