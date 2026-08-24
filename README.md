@@ -6,11 +6,9 @@ Personal dotfiles and configuration files.
 
 ```text
 ~/dotfiles/
-├── gitconfig              # Global git configuration
 ├── git/
-│   ├── .gitconfig         # Symlink to ../gitconfig
-│   ├── .gitignore_global  # Global gitignore rules
-│   └── ignore             # Symlink to .gitignore_global
+│   ├── .gitconfig         # Global git configuration
+│   └── .gitignore_global  # Global gitignore rules
 ├── install.sh             # Symlink installer & backup script
 ├── README.md              # Documentation
 └── .gitignore             # Dotfiles repo gitignore
@@ -18,9 +16,9 @@ Personal dotfiles and configuration files.
 
 ## Symlinks Created
 
-- `~/.gitconfig` -> `~/dotfiles/gitconfig`
+- `~/.gitconfig` -> `~/dotfiles/git/.gitconfig`
 - `~/.gitignore_global` -> `~/dotfiles/git/.gitignore_global`
-- `~/.config/git/config` -> `~/dotfiles/gitconfig`
+- `~/.config/git/config` -> `~/dotfiles/git/.gitconfig`
 - `~/.config/git/ignore` -> `~/dotfiles/git/.gitignore_global`
 - `~/.dotfiles` -> `~/dotfiles`
 

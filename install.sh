@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}==>${NC} Installing dotfiles from ${DOTFILES_DIR}..."
+echo -e "${BLUE}==>${NC} Installing dotfiles symlinks from ${DOTFILES_DIR}..."
 
 link_file() {
     local src="$1"
@@ -37,8 +37,8 @@ link_file() {
 }
 
 # Git configurations
-link_file "$DOTFILES_DIR/gitconfig" "$HOME/.gitconfig"
-link_file "$DOTFILES_DIR/gitconfig" "$HOME/.config/git/config"
+link_file "$DOTFILES_DIR/git/.gitconfig" "$HOME/.gitconfig"
+link_file "$DOTFILES_DIR/git/.gitconfig" "$HOME/.config/git/config"
 link_file "$DOTFILES_DIR/git/.gitignore_global" "$HOME/.gitignore_global"
 link_file "$DOTFILES_DIR/git/.gitignore_global" "$HOME/.config/git/ignore"
 
