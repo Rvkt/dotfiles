@@ -1,102 +1,170 @@
-# ~/.gitconfig / ~/dotfiles/gitconfig
-# See https://git-scm.com/docs/git-config
+# ======================================
+# 🧰 GIT GLOBAL CONFIGURATION
+# Maintainer : Ravi Kant
+# ======================================
 
 [user]
-	name = rvkt
-	# email = your_email@example.com
-
-[init]
-	defaultBranch = main
-
-[core]
-	editor = nvim
-	autocrlf = input
-	whitespace = trailing-space,space-before-tab
-	excludesfile = ~/.config/git/ignore
-
-[alias]
-	# Status & Overview
-	st = status
-	s = status -s
-	br = branch
-	branches = branch -a
-	tags = tag -l
-
-	# Commit & Stage
-	ci = commit
-	cm = commit -m
-	ca = commit --amend
-	can = commit --amend --no-edit
-	unstage = reset HEAD --
-
-	# Checkout & Switch
-	co = checkout
-	sw = switch
-	cb = checkout -b
-
-	# Diff & Inspection
-	df = diff
-	dc = diff --cached
-	last = log -1 HEAD --stat
-
-	# Log & History Graph
-	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative
-	lga = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative --all
-	hist = log --pretty=format:'%C(yellow)%h%Creset %ad | %C(green)%s%d%Creset [%an]' --graph --date=short
-
-	# Push, Pull & Sync
-	p = push
-	pf = push --force-with-lease
-	up = pull --rebase --autostash
-
-	# Stash
-	sl = stash list
-	sp = stash pop
-	ss = stash save
-
-[pull]
-	rebase = true 			 # Rebase (instead of merge) on pull
-
-[push]
-	autoSetupRemote = true   # Automatically set upstream branch on push
-	default = current        # Push current branch to branch with same name
-	followTags = true        # Push relevant annotated tags
-
-[fetch]
-	prune = true             # Remove remote-tracking references that no longer exist
-	pruneTags = true         # Remove local tags that no longer exist on remote
-	all = true               # Fetch from all remotes
-
-[diff]
-	algorithm = histogram    # Clearer diffs on moved/edited lines
-	colorMoved = plain       # Highlight moved blocks in diffs
-	mnemonicPrefix = true    # More intuitive refs in diff output (i/w instead of a/b)
-	renames = copies         # Detect copies as well as renames
-
-[merge]
-	conflictstyle = zdiff3   # Show common ancestor in conflict markers
-
-[commit]
-	verbose = true           # Include diff comment in commit message template
-
-[column]
-	ui = auto 			     # Output in columns when possible
-
-[branch]
-	sort = -committerdate    # Sort branches by most recent commit first
-
-[tag]
-	sort = -version:refname  # Sort version numbers naturally (v1.2 before v1.10)
-
-[rerere]
-	enabled = true           # Record and reuse conflict resolutions
-	autoupdate = true        # Apply stored conflict resolutions automatically
-
-[help]
-	autocorrect = prompt     # Prompt for correction if typo in git command
+    # 👤 User Info
+    name  = Ravi Kant
+    email = 46199672+Rvkt@users.noreply.github.com
 
 [color]
-	ui = auto
-	diff = auto
-	status = auto
-	branch = auto
+    ui = auto
+
+[color "branch"]
+    current = yellow
+    local   = cyan
+    remote  = red
+
+[push]
+    # 🚀 Automatically set upstream on first push
+    autoSetupRemote = true
+
+# --------------------------------------
+# ✅ Added enterprise-grade defaults
+# --------------------------------------
+[init]
+    # 🌱 Use modern default branch name
+    defaultBranch = main
+
+[receive]
+    # 🛡️ Prevent force-push overwrites on shared remotes
+    denyNonFastForwards = true
+
+[diff]
+    # 🎨 Clearer move detection in diffs
+    colorMoved = default
+
+[merge]
+    # 🧩 Show base/common ancestor during merge conflicts
+    conflictStyle = diff3
+
+[filter "lfs"]
+    process  = git-lfs filter-process
+    required = true
+    clean    = git-lfs clean -- %f
+    smudge   = git-lfs smudge -- %f
+
+[alias]
+    # ---------------------------------------------------
+    # 📜 LOGS & HISTORY
+    # ---------------------------------------------------
+    l          = log --oneline --graph --decorate --all
+    lg         = log --graph --abbrev-commit --decorate --date=relative --all
+    hist       = log --pretty=format:'%C(yellow)%h%Creset %Cgreen%ad%Creset | %s%d %Cblue[%an]%Creset' --graph --date=short
+    last       = log -1 HEAD --stat
+    changes    = diff --stat HEAD^ HEAD
+    recent     = "!git for-each-ref --sort=-committerdate refs/heads/ --format='%(refname:short) - %(committerdate:relative) - %(subject)' | head -n 10"
+    top        = "!git shortlog -sn --all --no-merges | head -n 10"
+    find       = "!f() { git log --all --grep=\"$1\"; }; f"
+    search     = "!f() { git log --all --oneline --decorate --grep=\"$1\"; }; f"
+    today      = log --since=midnight --oneline
+    week       = log --since='1 week ago' --oneline
+    graph      = log --all --decorate --oneline --graph
+
+    # ---------------------------------------------------
+    # 📧 FILTER COMMITS BY EMAIL / AUTHOR
+    # ---------------------------------------------------
+    bymail     = "!f() { git log --all --author=\"$1\" --oneline --graph --decorate; }; f"
+    bymails    = "!f() { git log --all --author=\"$1\" --stat; }; f"
+    byemail    = "!f() { git log --all --format='%C(yellow)%h%Creset %C(cyan)%ae%Creset %s' | grep -i \"$1\"; }; f"
+    authors    = "!git log --all --format='%an <%ae>' | sort | uniq"
+    mylog      = "!git log --all --author=\"$(git config user.email)\" --oneline --graph --decorate"
+    myhist     = "!git log --all --author=\"$(git config user.email)\" --pretty=format:'%C(yellow)%h%Creset %Cgreen%ad%Creset | %s %Cblue[%an <%ae>] %Creset' --graph --date=short"
+    emailcount = "!git log --all --format='%ae' | sort | uniq -c | sort -nr"
+
+    # ---------------------------------------------------
+    # 🌿 BRANCH MANAGEMENT
+    # ---------------------------------------------------
+    br         = branch
+    co         = checkout
+    cob        = checkout -b
+    com        = checkout main
+    cod        = checkout develop
+    cb         = "!f() { git checkout -b \"$1\" && git push -u origin \"$1\"; }; f"
+    rb         = "!f() { git branch -m \"$1\" \"$2\" && git push origin :\"$1\" && git push -u origin \"$2\"; }; f"
+    dbr        = "!f() { git branch -D \"$1\" && git push origin --delete \"$1\"; }; f"
+    cleanup    = "!git branch --merged | egrep -v '(^\\*|main|master|develop|dev)' | xargs git branch -d"
+    gone       = "!git fetch -p && git branch -vv | grep ': gone]'"
+    pruneall   = "!git fetch --all --prune"
+
+    # ---------------------------------------------------
+    # 🔀 REBASE & MERGE
+    # ---------------------------------------------------
+    rc         = rebase --continue
+    ra         = rebase --abort
+    rs         = rebase --skip
+    ri         = rebase -i
+    amend      = commit --amend --no-edit
+
+    # ---------------------------------------------------
+    # ✅ COMMITS
+    # ---------------------------------------------------
+    aa         = add .
+    ap         = add -p
+    cm         = commit -m
+    ca         = commit -am
+    cl         = clone
+    fix        = commit --amend --no-edit
+    reword     = commit --amend
+    undo       = reset --soft HEAD~1
+    nuke       = reset --hard HEAD~1
+    unstage    = reset HEAD --
+    squash     = "!f() { git reset --soft HEAD~$1 && git commit; }; f"
+    fixup      = "!f() { git commit --fixup=$1; }; f"
+    wip        = "!git add . && git commit -m 'WIP'"
+
+    # ---------------------------------------------------
+    # 📦 STASH HELPERS
+    # ---------------------------------------------------
+    ss         = "!f() { git stash push -m \"$1\"; }; f"
+    sl         = stash list
+    sa         = stash apply
+    sp         = stash pop
+    sd         = stash drop
+
+    # ---------------------------------------------------
+    # 🌍 REMOTE & SYNC
+    # ---------------------------------------------------
+    f          = fetch origin
+    pl         = pull
+    ps         = push
+    psu        = push -u
+    sync       = "!git fetch --all --prune"
+    rso        = remote show origin
+    ccl        = "!f() { git clone \"$1\" && cd \"$(basename \"$1\" .git)\"; }; f"
+
+    # ---------------------------------------------------
+    # 🛠️ UTILITIES & HELPMATES
+    # ---------------------------------------------------
+    s          = status --short
+    st         = status
+    gcl        = config --global --list
+    al         = "!git config --get-regexp ^alias\\\\."
+    type       = cat .git/config
+    ignored    = "!git ls-files -v | grep '^h'"
+    aliases    = config --get-regexp '^alias\\.'
+    root       = rev-parse --show-toplevel
+    current    = branch --show-current
+    whoami     = config user.email
+    open = "!xdg-open $(git remote get-url origin)"
+    aliasify   = "!f() { git config --global alias.$1 \"$2\"; }; f"
+    unaliasify = "!f() { git config --global --unset alias.$1; }; f"
+
+    # ---------------------------------------------------
+    # 🏷️ TAGS
+    # ---------------------------------------------------
+    tags       = tag -l
+    tc         = "!f() { git tag -a \"$1\" \"$2\" -m \"$3\"; }; f"
+    dt         = "!f() { git tag -d \"$1\" && git push --delete origin \"$1\"; }; f"
+
+    # ---------------------------------------------------
+    # ⚡ WORKTREE
+    # ---------------------------------------------------
+    wt         = worktree list
+    wta        = "!f() { git worktree add ../$1 $1; }; f"
+    wtr        = "!f() { git worktree remove ../$1; }; f"
+
+
+[core]
+    excludesfile = ~/.gitignore_global

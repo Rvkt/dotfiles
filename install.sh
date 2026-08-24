@@ -39,7 +39,8 @@ link_file() {
 # Git configurations
 link_file "$DOTFILES_DIR/gitconfig" "$HOME/.gitconfig"
 link_file "$DOTFILES_DIR/gitconfig" "$HOME/.config/git/config"
-link_file "$DOTFILES_DIR/git/ignore" "$HOME/.config/git/ignore"
+link_file "$DOTFILES_DIR/git/.gitignore_global" "$HOME/.gitignore_global"
+link_file "$DOTFILES_DIR/git/.gitignore_global" "$HOME/.config/git/ignore"
 
 # Optional symlink for .dotfiles -> ~/dotfiles
 if [ "$DOTFILES_DIR" != "$HOME/.dotfiles" ] && [ ! -e "$HOME/.dotfiles" ]; then
