@@ -34,3 +34,11 @@ elif [ -f "$HOME/.dotfiles/bash/.local/share/z/z.sh" ]; then
 elif [ -f "$HOME/dotfiles/bash/.local/share/z/z.sh" ]; then
     . "$HOME/dotfiles/bash/.local/share/z/z.sh"
 fi
+
+# ----------------------------------------------------------------------
+# Aliases
+# ----------------------------------------------------------------------
+alias clr='clear'
+alias dotfiles='z dotfiles'
+alias reload='source ~/.bash_profile'
+
