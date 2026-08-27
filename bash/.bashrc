@@ -21,6 +21,9 @@ case ":$PATH:" in
   *) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
 
+# Flutter SDK
+export PATH="$HOME/flutter/bin:$PATH"
+
 # ----------------------------------------------------------------------
 # z - jump around directory navigation
 # (uses zoxide if installed, or falls back to rupa/z)
@@ -38,7 +41,8 @@ fi
 # ----------------------------------------------------------------------
 # Aliases
 # ----------------------------------------------------------------------
-alias clr='clear'
+alias oc='opencode'
+alias c='clear'
 alias dotfiles='z dotfiles'
 alias reload='source ~/.bash_profile'
 
