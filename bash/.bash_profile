@@ -1,11 +1,8 @@
-#
+# ----------------------------------------------------------------------
 # ~/.bash_profile
-#
+# ----------------------------------------------------------------------
 
-[[ -f ~/.bashrc ]] && . ~/.bashrc
-
-# Ensure ~/.local/bin is on PATH
-case ":$PATH:" in
-  *":$HOME/.local/bin:"*) ;;
-  *) export PATH="$HOME/.local/bin:$PATH" ;;
-esac
+# Source ~/.bashrc if it exists
+if [[ -f "$HOME/.bashrc" ]]; then
+    . "$HOME/.bashrc"
+fi
