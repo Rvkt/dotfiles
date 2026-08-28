@@ -14,6 +14,8 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 ├── git/
 │   ├── .gitconfig                  # Global git configuration
 │   └── .gitignore_global           # Global gitignore rules
+├── starship/
+│   └── .config/starship.toml       # Starship prompt configuration
 ├── install.sh                      # GNU Stow automated installer & backup script
 ├── README.md                       # Documentation
 └── .gitignore                      # Dotfiles repository gitignore
@@ -32,6 +34,9 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 - `~/.gitignore_global` -> `~/dotfiles/git/.gitignore_global`
 - `~/.config/git/config` -> `~/dotfiles/git/.gitconfig` *(compatibility)*
 - `~/.config/git/ignore` -> `~/dotfiles/git/.gitignore_global` *(compatibility)*
+
+### Starship (`starship` package)
+- `~/.config/starship.toml` -> `~/dotfiles/starship/.config/starship.toml`
 
 ### Repository Link
 - `~/.dotfiles` -> `~/dotfiles`
@@ -57,5 +62,5 @@ cd ~/dotfiles
 
 ```bash
 cd ~/dotfiles
-stow --no-folding --restow -t ~ bash git
+stow --no-folding --restow -t ~ bash git starship
 ```

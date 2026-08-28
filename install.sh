@@ -27,7 +27,7 @@ if ! command -v stow &> /dev/null; then
 fi
 
 # Define packages to stow
-PACKAGES=("bash" "git")
+PACKAGES=("bash" "git" "starship")
 
 # Pre-stow backup: remove obsolete symlinks and backup conflicting regular files
 backup_conflicts() {

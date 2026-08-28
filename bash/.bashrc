@@ -69,4 +69,19 @@ alias c='clear'
 alias dotfiles='z dotfiles'
 alias reload='source ~/.bash_profile'
 
+# ----------------------------------------------------------------------
+# Prompt Fallback (when Starship is not active)
+# ----------------------------------------------------------------------
+if ! command -v starship &> /dev/null; then
+    __git_branch_prompt() {
+        local branch
+        branch="$(git branch --show-current 2>/dev/null)"
+        if [ -n "$branch" ]; then
+            printf " \033[36m•\033[0m \033[3;36m%s\033[0m" "$branch"
+        fi
+    }
+    PS1='\[\033[1;36m\]\W\[\033[0m\]$(__git_branch_prompt) \[\033[1;36m\]>\[\033[0m\] '
+fi
+
+
 
