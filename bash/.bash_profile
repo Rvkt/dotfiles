@@ -10,6 +10,8 @@ fi
 # ----------------------------------------------------------------------
 # React Native JSON Logs
 # ----------------------------------------------------------------------
+unalias rn-logs rnlog rnlogs 2>/dev/null || true
+
 rn-logs() {
     local bin=""
     if [ -x "$HOME/.local/bin/rn-logs" ]; then
@@ -27,12 +29,13 @@ rn-logs() {
         return 1
     fi
 }
+
 rnlog() {
     rn-logs "$@"
 }
+
 rnlogs() {
     rn-logs "$@"
 }
-alias rnlog='rn-logs'
-alias rnlogs='rn-logs'
+
 

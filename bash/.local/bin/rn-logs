@@ -259,6 +259,17 @@ def parse_message_payload(msg):
             except Exception:
                 pass
 
+    # Embedded JSON: Text ... { ... } or Text ... [ ... ]
+    m_json = re.search(r"(\{.*\}|\[.*\])", msg_strip)
+    if m_json:
+        candidate = m_json.group(0)
+        try:
+            parsed = json.loads(candidate)
+            prefix = msg_strip[:m_json.start()].strip()
+            return {"text": prefix, "data": parsed} if prefix else parsed
+        except Exception:
+            pass
+
     return msg
 
 
@@ -351,10 +362,11 @@ def get_package_pid(package_name, device_serial=None):
 # Log Processing Engine
 # ----------------------------------------------------------------------
 class LogProcessor:
-    def __init__(self, args, target_pkg=None, target_pid=None, color_enabled=True):
+    def __init__(self, args, target_pkg=None, target_pid=None, tag_regex=None, color_enabled=True):
         self.args = args
         self.target_pkg = target_pkg
         self.target_pid = target_pid
+        self.tag_regex = tag_regex
         self.color_enabled = color_enabled
 
         self.cur_entry = None
@@ -367,9 +379,9 @@ class LogProcessor:
         if self.args.all:
             return True
 
-        # Custom tag specified
-        if self.args.tag:
-            return bool(re.search(self.args.tag, tag, re.IGNORECASE))
+        # Custom tag specified (e.g. -t "ReactNativeJS")
+        if self.tag_regex:
+            return bool(self.tag_regex.search(tag))
 
         # Matches app PID
         if self.target_pid and pid_val == self.target_pid:
@@ -602,9 +614,10 @@ Examples:
     )
     parser.add_argument(
         "-t", "--tag",
-        dest="tag",
-        default=None,
-        help="Filter by specific log tag (regex)",
+        dest="tags",
+        action="append",
+        default=[],
+        help="Filter by specific log tag (e.g. -t 'ReactNativeJS', or comma-separated: -t 'Tag1,Tag2')",
     )
     parser.add_argument(
         "-c", "--clear",
@@ -657,8 +670,23 @@ Examples:
     if not package_name and args.target:
         if "." in args.target:
             package_name = args.target
-        elif not args.tag:
-            args.tag = args.target
+        elif not args.tags:
+            args.tags.append(args.target)
+
+    # Collect and compile tag filter regex
+    raw_tags = []
+    if args.tags:
+        for t in args.tags:
+            for part in re.split(r"[,|]", t):
+                part = part.strip()
+                if part:
+                    raw_tags.append(part)
+
+    tag_patterns = []
+    for t in raw_tags:
+        tag_patterns.append(re.escape(t) if not any(c in t for c in "*?+^$()[]{}") else t)
+
+    tag_regex = re.compile("|".join(f"(?:{p})" for p in tag_patterns), re.IGNORECASE) if tag_patterns else None
 
     if not package_name and not args.all:
         package_name = find_rn_package_name()
@@ -667,7 +695,12 @@ Examples:
     is_piped = not sys.stdin.isatty()
 
     if is_piped:
-        processor = LogProcessor(args, target_pkg=package_name, color_enabled=color_on)
+        processor = LogProcessor(
+            args,
+            target_pkg=package_name,
+            tag_regex=tag_regex,
+            color_enabled=color_on,
+        )
         try:
             while True:
                 # Use select with 50ms timeout for responsive flushing
@@ -726,11 +759,15 @@ Examples:
     # Print startup banner
     if color_on:
         dev_info = f"{BOLD_CYAN}📱 Device:{RESET} {device_model} {DIM}({device_serial}){RESET}"
-        if package_name:
+        if raw_tags:
+            tag_display = ", ".join(raw_tags)
+            pkg_info = f"{BOLD_CYAN}🏷️  Tag Filter:{RESET} {BOLD}{tag_display}{RESET}"
+            if package_name:
+                pid_str = f"{BOLD_GREEN}PID: {target_pid}{RESET}" if target_pid else f"{DIM}(not running){RESET}"
+                pkg_info += f"  {DIM}|{RESET}  {BOLD_CYAN}📦 Package:{RESET} {BOLD}{package_name}{RESET} {pid_str}"
+        elif package_name:
             pid_str = f"{BOLD_GREEN}PID: {target_pid}{RESET}" if target_pid else f"{DIM}(not running){RESET}"
             pkg_info = f"{BOLD_CYAN}📦 Package:{RESET} {BOLD}{package_name}{RESET} {pid_str}"
-        elif args.tag:
-            pkg_info = f"{BOLD_CYAN}🏷️  Tag Filter:{RESET} {BOLD}{args.tag}{RESET}"
         else:
             pkg_info = f"{BOLD_CYAN}⚡ Filter:{RESET} {DIM}React Native Runtime (ReactNative, ReactNativeJS, BridgelessReact...){RESET}"
 
@@ -738,6 +775,8 @@ Examples:
         print(f"{dev_info}\n{pkg_info}\n{status_info}")
     else:
         print(f"Device: {device_model} ({device_serial})")
+        if raw_tags:
+            print(f"Tag Filter: {', '.join(raw_tags)}")
         if package_name:
             print(f"Package: {package_name} (PID: {target_pid or 'not running'})")
         print("Streaming logs in JSON format... (Ctrl+C to stop)\n")
@@ -747,6 +786,11 @@ Examples:
     if device_serial:
         cmd_logcat.extend(["-s", device_serial])
     cmd_logcat.extend(["logcat", "-v", "threadtime"])
+
+    # If simple tags provided, pass directly to adb logcat for performance
+    simple_tags = [t for t in raw_tags if re.match(r"^[A-Za-z0-9_.-]+$", t)]
+    if simple_tags and len(simple_tags) == len(raw_tags):
+        cmd_logcat.extend([f"{st}:V" for st in simple_tags] + ["*:S"])
 
     proc = subprocess.Popen(
         cmd_logcat,
@@ -761,6 +805,7 @@ Examples:
         args,
         target_pkg=package_name,
         target_pid=target_pid,
+        tag_regex=tag_regex,
         color_enabled=color_on,
     )
 
