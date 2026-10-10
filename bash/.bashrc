@@ -70,6 +70,12 @@ alias dotfiles='z dotfiles'
 alias reload='source ~/.bash_profile'
 
 # ----------------------------------------------------------------------
+# Keybindings
+# ----------------------------------------------------------------------
+# Ctrl+L to clear the terminal
+bind -x '"\C-l": clear'
+
+# ----------------------------------------------------------------------
 # React Native JSON Logs
 # ----------------------------------------------------------------------
 unalias rn-logs rnlog rnlogs 2>/dev/null || true
