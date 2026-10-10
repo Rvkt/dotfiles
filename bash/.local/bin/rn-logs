@@ -252,9 +252,13 @@ def deep_parse_json(val):
         return [deep_parse_json(v) for v in val]
     elif isinstance(val, str):
         s = val.strip()
-        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
-            parsed = try_parse_json(s)
-            if parsed is not None:
+        if (s.startswith("{") and s.endswith("}")) or \
+           (s.startswith("[") and s.endswith("]")) or \
+           (s.startswith('"') and ":" in s) or \
+           (s.startswith("'") and ":" in s) or \
+           (":" in s and ("{" in s or "[" in s)):
+            parsed = parse_message_payload(s)
+            if isinstance(parsed, (dict, list)):
                 return deep_parse_json(parsed)
     return val
 
@@ -450,7 +454,37 @@ class LogProcessor:
         raw_msg = "\n".join(entry["messages"])
         parsed_payload = parse_message_payload(raw_msg)
 
-        if self.args.msg_only and (isinstance(parsed_payload, (dict, list))):
+        # If payload is already a structured log entry dict (e.g. from previous rnlog output or JSON logs)
+        if isinstance(parsed_payload, dict) and "message" in parsed_payload:
+            ts = parsed_payload.get("timestamp") or entry["timestamp"]
+            lvl = parsed_payload.get("level") or entry["level"]
+            tag = parsed_payload.get("tag") or entry["tag"]
+            msg_val = parsed_payload["message"]
+            if isinstance(msg_val, str):
+                msg_val = parse_message_payload(msg_val)
+
+            if self.args.msg_only and (isinstance(msg_val, (dict, list))):
+                output_obj = msg_val
+            else:
+                output_obj = {
+                    "timestamp": ts,
+                    "level": lvl,
+                    "tag": tag,
+                    "message": msg_val,
+                }
+                for k, v in parsed_payload.items():
+                    if k not in ("timestamp", "level", "tag", "message", "pid", "tid"):
+                        output_obj[k] = v
+
+                if getattr(self.args, "show_pid", False):
+                    pid_val = parsed_payload.get("pid", entry.get("pid"))
+                    tid_val = parsed_payload.get("tid", entry.get("tid"))
+                    if pid_val is not None:
+                        output_obj["pid"] = pid_val
+                    if tid_val is not None:
+                        output_obj["tid"] = tid_val
+
+        elif self.args.msg_only and (isinstance(parsed_payload, (dict, list))):
             output_obj = parsed_payload
         else:
             output_obj = {
