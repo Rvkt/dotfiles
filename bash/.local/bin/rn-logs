@@ -263,11 +263,55 @@ def deep_parse_json(val):
     return val
 
 
+def extract_embedded_json(s):
+    """
+    Finds and extracts any valid JSON object or array substring within text.
+    Handles prefixes, tags (e.g. [API], [Network]), URLs, and status codes.
+    """
+    n = len(s)
+    for start in range(n):
+        ch = s[start]
+        if ch not in ("{", "["):
+            continue
+
+        close_ch = "}" if ch == "{" else "]"
+        balance = 0
+        in_str = False
+        esc = False
+
+        for i in range(start, n):
+            c = s[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c == ch:
+                    balance += 1
+                elif c == close_ch:
+                    balance -= 1
+                    if balance == 0:
+                        candidate = s[start:i+1]
+                        parsed = try_parse_json(candidate)
+                        if parsed is not None:
+                            prefix = s[:start].strip().rstrip(":").rstrip("-").rstrip(">").strip()
+                            clean_prefix = prefix.strip("\"'")
+                            if clean_prefix:
+                                return {clean_prefix: parsed}
+                            return parsed
+    return None
+
+
 def parse_message_payload(msg):
     """
-    Parses a React Native message into structured JSON if it contains
-    valid JSON, Hermes object notation, key-value fragments (such as API request/response),
-    or prefixed JSON data.
+    Universally parses any React Native message or API response into structured JSON.
+    Handles direct JSON, Hermes objects/arrays, key-value fragments, labeled payloads,
+    and embedded JSON substrings anywhere in the message.
     """
     msg_strip = msg.strip()
     if not msg_strip:
@@ -290,7 +334,7 @@ def parse_message_payload(msg):
         except Exception:
             pass
 
-    # 3. Key-value fragment or with trailing comma (e.g. "request": { ... }, or "response": { ... },)
+    # 3. Key-value fragment or with trailing comma (e.g. "any_key": { ... }, or key: { ... },)
     candidate_wrapped = msg_strip.rstrip().rstrip(",")
     res = try_parse_json("{" + candidate_wrapped + "}")
     if res is not None:
@@ -302,27 +346,20 @@ def parse_message_payload(msg):
         if res is not None:
             return deep_parse_json(res)
 
-    # 5. Label: { ... } or Label: [ ... ]
+    # 5. Embedded JSON in text (handles [API], URLs, status codes, prefixes, labels)
+    res = extract_embedded_json(msg_strip)
+    if res is not None:
+        return deep_parse_json(res)
+
+    # 6. Fallback label: candidate partition
     if ":" in msg_strip:
-        label, _, candidate = msg_strip.partition(":")
+        label, _, candidate = msg_strip.rpartition(":")
         cand_clean = candidate.strip().rstrip(",")
         cand_parsed = try_parse_json(cand_clean)
         if cand_parsed is not None:
             clean_label = label.strip().strip('"').strip("'")
             if clean_label:
                 return deep_parse_json({clean_label: cand_parsed})
-
-    # 6. Embedded JSON in text (e.g. prefix ... { ... })
-    m_json = re.search(r"(\{.*\}|\[.*\])", msg_strip, re.DOTALL)
-    if m_json:
-        candidate = m_json.group(0)
-        cand_parsed = try_parse_json(candidate)
-        if cand_parsed is not None:
-            prefix = msg_strip[:m_json.start()].strip()
-            clean_prefix = prefix.rstrip(":").strip()
-            if clean_prefix:
-                return deep_parse_json({clean_prefix: cand_parsed})
-            return deep_parse_json(cand_parsed)
 
     return msg
 
@@ -447,6 +484,19 @@ class LogProcessor:
 
         return False
 
+    def is_line_open(self, line):
+        """Returns True if the line ends with an opening or continuation token."""
+        s = line.rstrip()
+        return (
+            s.endswith(":")
+            or s.endswith(",")
+            or s.endswith("->")
+            or s.endswith("=>")
+            or s.endswith("(")
+            or s.endswith("[")
+            or s.endswith("{")
+        )
+
     def emit_entry(self, entry):
         if not entry:
             return
@@ -529,8 +579,10 @@ class LogProcessor:
 
         # Check raw JSON directly (e.g. from Metro or raw JSON stream)
         line_strip = line.strip()
-        if (line_strip.startswith("{") and line_strip.endswith("}")) or \
-           (line_strip.startswith("[") and line_strip.endswith("]")):
+        if (not self.cur_entry or self.balance == 0) and (
+            (line_strip.startswith("{") and line_strip.endswith("}")) or
+            (line_strip.startswith("[") and line_strip.endswith("]"))
+        ):
             try:
                 parsed_json = json.loads(line_strip)
                 if self.cur_entry:
@@ -568,7 +620,7 @@ class LogProcessor:
                     and (
                         self.balance > 0
                         or self.in_str
-                        or (self.cur_entry["messages"] and self.cur_entry["messages"][-1].rstrip().endswith(":"))
+                        or (self.cur_entry["messages"] and self.is_line_open(self.cur_entry["messages"][-1]))
                         or self.cur_entry["timestamp"] == dt
                     )
                 )
@@ -577,7 +629,7 @@ class LogProcessor:
                     self.balance, self.in_str, self.esc = count_balance(
                         msg, self.balance, self.in_str, self.esc
                     )
-                    if self.balance == 0 and not msg.rstrip().endswith(":"):
+                    if self.balance == 0 and not self.is_line_open(msg):
                         self.emit_entry(self.cur_entry)
                         self.cur_entry = None
                     return
@@ -594,7 +646,7 @@ class LogProcessor:
                 "messages": [msg],
             }
             self.balance, self.in_str, self.esc = count_balance(msg, 0, False, False)
-            if self.balance == 0 and not msg.rstrip().endswith(":"):
+            if self.balance == 0 and not self.is_line_open(msg):
                 # May have non-header continuation lines; wait for next line or select timeout
                 pass
             return
@@ -618,7 +670,7 @@ class LogProcessor:
                     and (
                         self.balance > 0
                         or self.in_str
-                        or (self.cur_entry["messages"] and self.cur_entry["messages"][-1].rstrip().endswith(":"))
+                        or (self.cur_entry["messages"] and self.is_line_open(self.cur_entry["messages"][-1]))
                         or self.cur_entry["timestamp"] == dt
                     )
                 )
@@ -627,7 +679,7 @@ class LogProcessor:
                     self.balance, self.in_str, self.esc = count_balance(
                         msg, self.balance, self.in_str, self.esc
                     )
-                    if self.balance == 0 and not msg.rstrip().endswith(":"):
+                    if self.balance == 0 and not self.is_line_open(msg):
                         self.emit_entry(self.cur_entry)
                         self.cur_entry = None
                     return
@@ -669,13 +721,13 @@ class LogProcessor:
             self.balance, self.in_str, self.esc = count_balance(
                 line, self.balance, self.in_str, self.esc
             )
-            if self.balance == 0 and not line.rstrip().endswith(":"):
+            if self.balance == 0 and not self.is_line_open(line):
                 self.emit_entry(self.cur_entry)
                 self.cur_entry = None
         else:
             # Fallback line or raw multiline JSON/fragment
             balance, in_s, esc = count_balance(line, 0, False, False)
-            if balance > 0 or line.rstrip().endswith(":") or line.rstrip().endswith(","):
+            if balance > 0 or self.is_line_open(line):
                 self.cur_entry = {
                     "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
                     "level": "INFO",
