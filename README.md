@@ -49,10 +49,10 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 - **`rn-logs` (React Native JSON Log Viewer)**:
   - Formats React Native logs into color-coded JSON (`rn-logs`, `rnlog`, `rnlogs`).
   - Auto-detects Android package from `build.gradle` or accepts a package/tag filter.
-  - Automatically groups multiline JSON logs and stack traces into structured objects.
+  - Automatically groups multiline JSON logs, API requests/responses, and stack traces into structured objects.
   - Highlights log levels: `ERROR` (bold red), `WARN` (yellow), `INFO` (green), `DEBUG` (cyan).
   - Works interactively via `adb logcat` or with pipes (`adb logcat | rnlog`, `cat logs.txt | rnlog`).
-  - Supports `--clear` (`-c`), `--msg-only` (`-m`), `--compact` (`-1`), and `--raw` (`--no-color`).
+  - Supports `--clear` (`-c`), `--msg-only` (`-m`), `--compact` (`-1`), `--raw` (`--no-color`), and `--show-pid`.
 - **`z` Directory Navigation**: Fast folder jumping by frecency (`z <pattern>`), supporting `zoxide` with fallback to `rupa/z`.
 - **Automated Backup & Safe Symlinking**: `install.sh` automatically backs up conflicting non-symlink files before linking.
 

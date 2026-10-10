@@ -203,72 +203,122 @@ def count_balance(s, current_balance, in_string, escape):
     return current_balance, in_string, escape
 
 
+def try_parse_json(text):
+    """Attempts to parse text as JSON, with lenient handling of JS object literals and Hermes formats."""
+    if not text:
+        return None
+    text = text.strip()
+    try:
+        val = json.loads(text)
+        if isinstance(val, (dict, list)):
+            return val
+    except Exception:
+        pass
+
+    # Clean Hermes / JSC Object { ... } and Array [ ... ]
+    cleaned = re.sub(r"\bObject\s*\{", "{", text)
+    cleaned = re.sub(r"\bArray\s*\[", "[", cleaned)
+    cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
+
+    try:
+        val = json.loads(cleaned)
+        if isinstance(val, (dict, list)):
+            return val
+    except Exception:
+        pass
+
+    # Convert JS object literals (unquoted keys, single-quoted strings, trailing commas)
+    try:
+        # Quote unquoted keys (preceded by start of string, newline, comma, or brace)
+        fixed = re.sub(r'(^|[{,\n]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:', r'\1"\2":', cleaned)
+        # Convert single-quoted strings to double quotes
+        fixed = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', fixed)
+        # Remove trailing commas
+        fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
+        val = json.loads(fixed)
+        if isinstance(val, (dict, list)):
+            return val
+    except Exception:
+        pass
+
+    return None
+
+
+def deep_parse_json(val):
+    """Recursively parses stringified JSON strings embedded inside dicts or lists."""
+    if isinstance(val, dict):
+        return {k: deep_parse_json(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [deep_parse_json(v) for v in val]
+    elif isinstance(val, str):
+        s = val.strip()
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            parsed = try_parse_json(s)
+            if parsed is not None:
+                return deep_parse_json(parsed)
+    return val
+
+
 def parse_message_payload(msg):
     """
     Parses a React Native message into structured JSON if it contains
-    valid JSON, Hermes object notation, or prefixed JSON data.
+    valid JSON, Hermes object notation, key-value fragments (such as API request/response),
+    or prefixed JSON data.
     """
     msg_strip = msg.strip()
+    if not msg_strip:
+        return msg
 
-    # Direct JSON object or array
-    if (msg_strip.startswith("{") and msg_strip.endswith("}")) or \
-       (msg_strip.startswith("[") and msg_strip.endswith("]")):
+    # 1. Direct JSON (object or array)
+    res = try_parse_json(msg_strip)
+    if res is not None:
+        return deep_parse_json(res)
+
+    # 2. Quoted string containing JSON or key-value fragments
+    if (msg_strip.startswith('"') and msg_strip.endswith('"')) or \
+       (msg_strip.startswith("'") and msg_strip.endswith("'")):
         try:
-            return json.loads(msg_strip)
+            unquoted = json.loads(msg_strip)
+            if isinstance(unquoted, str):
+                res = parse_message_payload(unquoted)
+                if isinstance(res, (dict, list)):
+                    return deep_parse_json(res)
         except Exception:
             pass
 
-    # Hermes / JSC "Object { ... }" or "Array [ ... ]"
-    if msg_strip.startswith("Object ") and msg_strip[7:].strip().startswith("{"):
-        try:
-            return json.loads(msg_strip[7:].strip())
-        except Exception:
-            pass
-    if msg_strip.startswith("Array ") and msg_strip[6:].strip().startswith("["):
-        try:
-            return json.loads(msg_strip[6:].strip())
-        except Exception:
-            pass
+    # 3. Key-value fragment or with trailing comma (e.g. "request": { ... }, or "response": { ... },)
+    candidate_wrapped = msg_strip.rstrip().rstrip(",")
+    res = try_parse_json("{" + candidate_wrapped + "}")
+    if res is not None:
+        return deep_parse_json(res)
 
-    # Quoted JSON: '{"foo": "bar"}' or "\"{"foo": "bar"}\""
-    if (msg_strip.startswith("'") and msg_strip.endswith("'")) or \
-       (msg_strip.startswith('"') and msg_strip.endswith('"')):
-        inner = msg_strip[1:-1].strip()
-        if (inner.startswith("{") and inner.endswith("}")) or \
-           (inner.startswith("[") and inner.endswith("]")):
-            try:
-                return json.loads(inner)
-            except Exception:
-                pass
+    # 4. Array fragment with trailing comma (e.g. [ ... ],)
+    if candidate_wrapped.startswith("[") and candidate_wrapped.endswith("]"):
+        res = try_parse_json(candidate_wrapped)
+        if res is not None:
+            return deep_parse_json(res)
 
-    # Label: { ... } or Label: [ ... ]
-    if ":" in msg:
-        label, _, candidate = msg.partition(":")
-        candidate_strip = candidate.strip()
-        if (candidate_strip.startswith("{") and candidate_strip.endswith("}")) or \
-           (candidate_strip.startswith("[") and candidate_strip.endswith("]")):
-            try:
-                parsed = json.loads(candidate_strip)
-                return {"label": label.strip(), "data": parsed}
-            except Exception:
-                pass
-        elif candidate_strip.startswith("Object ") and candidate_strip[7:].strip().startswith("{"):
-            try:
-                parsed = json.loads(candidate_strip[7:].strip())
-                return {"label": label.strip(), "data": parsed}
-            except Exception:
-                pass
+    # 5. Label: { ... } or Label: [ ... ]
+    if ":" in msg_strip:
+        label, _, candidate = msg_strip.partition(":")
+        cand_clean = candidate.strip().rstrip(",")
+        cand_parsed = try_parse_json(cand_clean)
+        if cand_parsed is not None:
+            clean_label = label.strip().strip('"').strip("'")
+            if clean_label:
+                return deep_parse_json({clean_label: cand_parsed})
 
-    # Embedded JSON: Text ... { ... } or Text ... [ ... ]
-    m_json = re.search(r"(\{.*\}|\[.*\])", msg_strip)
+    # 6. Embedded JSON in text (e.g. prefix ... { ... })
+    m_json = re.search(r"(\{.*\}|\[.*\])", msg_strip, re.DOTALL)
     if m_json:
         candidate = m_json.group(0)
-        try:
-            parsed = json.loads(candidate)
+        cand_parsed = try_parse_json(candidate)
+        if cand_parsed is not None:
             prefix = msg_strip[:m_json.start()].strip()
-            return {"text": prefix, "data": parsed} if prefix else parsed
-        except Exception:
-            pass
+            clean_prefix = prefix.rstrip(":").strip()
+            if clean_prefix:
+                return deep_parse_json({clean_prefix: cand_parsed})
+            return deep_parse_json(cand_parsed)
 
     return msg
 
@@ -407,11 +457,13 @@ class LogProcessor:
                 "timestamp": entry["timestamp"],
                 "level": entry["level"],
                 "tag": entry["tag"],
-                "pid": entry["pid"],
+                "message": parsed_payload,
             }
-            if entry.get("tid") is not None:
-                output_obj["tid"] = entry["tid"]
-            output_obj["message"] = parsed_payload
+            if getattr(self.args, "show_pid", False):
+                if entry.get("pid") is not None:
+                    output_obj["pid"] = entry["pid"]
+                if entry.get("tid") is not None:
+                    output_obj["tid"] = entry["tid"]
 
         colorized = colorize_json(
             output_obj,
@@ -479,14 +531,19 @@ class LogProcessor:
                     self.cur_entry["pid"] == pid_val
                     and self.cur_entry["tid"] == tid_val
                     and self.cur_entry["tag"] == tag
-                    and (self.balance > 0 or self.cur_entry["timestamp"] == dt)
+                    and (
+                        self.balance > 0
+                        or self.in_str
+                        or (self.cur_entry["messages"] and self.cur_entry["messages"][-1].rstrip().endswith(":"))
+                        or self.cur_entry["timestamp"] == dt
+                    )
                 )
                 if is_same_call:
                     self.cur_entry["messages"].append(msg)
                     self.balance, self.in_str, self.esc = count_balance(
                         msg, self.balance, self.in_str, self.esc
                     )
-                    if self.balance == 0:
+                    if self.balance == 0 and not msg.rstrip().endswith(":"):
                         self.emit_entry(self.cur_entry)
                         self.cur_entry = None
                     return
@@ -503,7 +560,7 @@ class LogProcessor:
                 "messages": [msg],
             }
             self.balance, self.in_str, self.esc = count_balance(msg, 0, False, False)
-            if self.balance == 0:
+            if self.balance == 0 and not msg.rstrip().endswith(":"):
                 # May have non-header continuation lines; wait for next line or select timeout
                 pass
             return
@@ -521,8 +578,28 @@ class LogProcessor:
                 return
 
             if self.cur_entry is not None:
-                self.emit_entry(self.cur_entry)
-                self.cur_entry = None
+                is_same_call = (
+                    self.cur_entry["pid"] == pid_val
+                    and self.cur_entry["tag"] == tag
+                    and (
+                        self.balance > 0
+                        or self.in_str
+                        or (self.cur_entry["messages"] and self.cur_entry["messages"][-1].rstrip().endswith(":"))
+                        or self.cur_entry["timestamp"] == dt
+                    )
+                )
+                if is_same_call:
+                    self.cur_entry["messages"].append(msg)
+                    self.balance, self.in_str, self.esc = count_balance(
+                        msg, self.balance, self.in_str, self.esc
+                    )
+                    if self.balance == 0 and not msg.rstrip().endswith(":"):
+                        self.emit_entry(self.cur_entry)
+                        self.cur_entry = None
+                    return
+                else:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
 
             self.cur_entry = {
                 "timestamp": dt,
@@ -555,16 +632,28 @@ class LogProcessor:
         # Continuation line without header (e.g. stack trace or multi-line output)
         if self.cur_entry:
             self.cur_entry["messages"].append(line)
-            if self.balance > 0:
-                self.balance, self.in_str, self.esc = count_balance(
-                    line, self.balance, self.in_str, self.esc
-                )
-                if self.balance == 0:
-                    self.emit_entry(self.cur_entry)
-                    self.cur_entry = None
+            self.balance, self.in_str, self.esc = count_balance(
+                line, self.balance, self.in_str, self.esc
+            )
+            if self.balance == 0 and not line.rstrip().endswith(":"):
+                self.emit_entry(self.cur_entry)
+                self.cur_entry = None
         else:
-            # Fallback line
-            if self.args.all or (self.target_pkg and self.target_pkg in line):
+            # Fallback line or raw multiline JSON/fragment
+            balance, in_s, esc = count_balance(line, 0, False, False)
+            if balance > 0 or line.rstrip().endswith(":") or line.rstrip().endswith(","):
+                self.cur_entry = {
+                    "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
+                    "level": "INFO",
+                    "tag": "log",
+                    "pid": 0,
+                    "messages": [line],
+                }
+                self.balance = balance
+                self.in_str = in_s
+                self.esc = esc
+                return
+            elif self.args.all or not self.target_pkg or (self.target_pkg and self.target_pkg in line):
                 self.emit_entry({
                     "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
                     "level": "INFO",
@@ -649,6 +738,12 @@ Examples:
         "-a", "--all",
         action="store_true",
         help="Do not filter; show all system logs in JSON format",
+    )
+    parser.add_argument(
+        "--show-pid", "--pid",
+        dest="show_pid",
+        action="store_true",
+        help="Include process ID (PID) and thread ID (TID) in JSON output",
     )
     parser.add_argument(
         "-s", "--device",
