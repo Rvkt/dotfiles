@@ -70,6 +70,29 @@ alias dotfiles='z dotfiles'
 alias reload='source ~/.bash_profile'
 
 # ----------------------------------------------------------------------
+# React Native JSON Logs
+# ----------------------------------------------------------------------
+rn-logs() {
+    local bin=""
+    if [ -x "$HOME/.local/bin/rn-logs" ]; then
+        bin="$HOME/.local/bin/rn-logs"
+    elif [ -x "$HOME/.dotfiles/bash/.local/bin/rn-logs" ]; then
+        bin="$HOME/.dotfiles/bash/.local/bin/rn-logs"
+    elif command -v rn-logs &>/dev/null && [ "$(type -t rn-logs)" != "function" ]; then
+        bin="$(command -v rn-logs)"
+    fi
+
+    if [ -n "$bin" ]; then
+        "$bin" "$@"
+    else
+        echo "Error: rn-logs executable not found." >&2
+        return 1
+    fi
+}
+alias rnlog='rn-logs'
+alias rnlogs='rn-logs'
+
+# ----------------------------------------------------------------------
 # Prompt Fallback (when Starship is not active)
 # ----------------------------------------------------------------------
 if ! command -v starship &> /dev/null; then

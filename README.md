@@ -10,6 +10,7 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 │   ├── .bash_profile               # Login shell profile
 │   ├── .bashrc                     # Interactive shell configuration & z init
 │   ├── .bash_logout                # Logout cleanup script
+│   ├── .local/bin/rn-logs          # React Native color-coded JSON log viewer
 │   └── .local/share/z/z.sh         # z - jump around directory navigation
 ├── git/
 │   ├── .gitconfig                  # Global git configuration
@@ -27,6 +28,7 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 - `~/.bashrc` -> `~/dotfiles/bash/.bashrc`
 - `~/.bash_profile` -> `~/dotfiles/bash/.bash_profile`
 - `~/.bash_logout` -> `~/dotfiles/bash/.bash_logout`
+- `~/.local/bin/rn-logs` -> `~/dotfiles/bash/.local/bin/rn-logs`
 - `~/.local/share/z/z.sh` -> `~/dotfiles/bash/.local/share/z/z.sh`
 
 ### Git (`git` package)
@@ -44,6 +46,13 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 ## Features
 
 - **GNU Stow Package Layout**: Modular, clean directory structure for configurations.
+- **`rn-logs` (React Native JSON Log Viewer)**:
+  - Formats React Native logs into color-coded JSON (`rn-logs`, `rnlog`, `rnlogs`).
+  - Auto-detects Android package from `build.gradle` or accepts a package/tag filter.
+  - Automatically groups multiline JSON logs and stack traces into structured objects.
+  - Highlights log levels: `ERROR` (bold red), `WARN` (yellow), `INFO` (green), `DEBUG` (cyan).
+  - Works interactively via `adb logcat` or with pipes (`adb logcat | rnlog`, `cat logs.txt | rnlog`).
+  - Supports `--clear` (`-c`), `--msg-only` (`-m`), `--compact` (`-1`), and `--raw` (`--no-color`).
 - **`z` Directory Navigation**: Fast folder jumping by frecency (`z <pattern>`), supporting `zoxide` with fallback to `rupa/z`.
 - **Automated Backup & Safe Symlinking**: `install.sh` automatically backs up conflicting non-symlink files before linking.
 

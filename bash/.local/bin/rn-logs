@@ -1,0 +1,794 @@
+#!/usr/bin/env python3
+"""
+rn-logs: React Native JSON Log Viewer & Colorizer
+
+Streams and displays React Native logs in structured, color-coded JSON format.
+Auto-detects React Native project packages from Android Gradle/Manifest files,
+tracks app process IDs, groups multi-line React Native logs (JSON & stack traces),
+and provides syntax highlighting with log level color coding.
+"""
+
+import os
+import re
+import sys
+import json
+import signal
+import select
+import shutil
+import argparse
+import datetime
+import subprocess
+
+# ----------------------------------------------------------------------
+# ANSI Color Codes
+# ----------------------------------------------------------------------
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+ITALIC = "\033[3m"
+
+# Standard Foreground
+BLACK = "\033[30m"
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+
+# Bold / Bright Foreground
+BOLD_RED = "\033[1;31m"
+BOLD_GREEN = "\033[1;32m"
+BOLD_YELLOW = "\033[1;33m"
+BOLD_BLUE = "\033[1;34m"
+BOLD_MAGENTA = "\033[1;35m"
+BOLD_CYAN = "\033[1;36m"
+BOLD_WHITE = "\033[1;37m"
+
+LEVEL_MAP = {
+    "V": "VERBOSE",
+    "D": "DEBUG",
+    "I": "INFO",
+    "W": "WARN",
+    "E": "ERROR",
+    "F": "FATAL",
+}
+
+RN_TAG_PATTERNS = [
+    r"ReactNative",
+    r"ReactNativeJS",
+    r"unknown:ReactNative",
+    r"BridgelessReact",
+    r"unknown:BridgelessReact",
+    r"ReactNativeJNI",
+    r"ReactAndroid",
+    r"Hermes",
+    r"JavaScriptCore",
+    r"RNKeychainManager",
+    r"RN.*",
+]
+
+RN_TAG_REGEX = re.compile(r"^(" + "|".join(RN_TAG_PATTERNS) + r")$", re.IGNORECASE)
+
+# Logcat threadtime format: MM-DD HH:MM:SS.mmm PID TID Level Tag: Message
+THREADTIME_RE = re.compile(
+    r"^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(\d+)\s+(\d+)\s+([VDIWEF])\s+(\S+?)\s*:\s+(.*)$"
+)
+
+# Logcat time format: MM-DD HH:MM:SS.mmm Level/Tag(PID): Message
+TIME_RE = re.compile(
+    r"^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+([VDIWEF])/(\S+?)\s*\(\s*(\d+)\s*\):\s+(.*)$"
+)
+
+# Metro bundler format: LOG/WARN/ERROR/INFO Message
+METRO_RE = re.compile(
+    r"^\s*(LOG|WARN|ERROR|INFO|DEBUG)\s+(.*)$"
+)
+
+
+# ----------------------------------------------------------------------
+# Helper Functions
+# ----------------------------------------------------------------------
+def is_color_enabled(args):
+    if args.no_color or os.environ.get("NO_COLOR"):
+        return False
+    if args.color:
+        return True
+    return sys.stdout.isatty()
+
+
+def colorize_json(val, color_enabled=True, compact=False, indent=2, current_indent=0, key_name=None):
+    if not color_enabled:
+        if compact:
+            return json.dumps(val, separators=(",", ":"), ensure_ascii=False)
+        return json.dumps(val, indent=indent, ensure_ascii=False)
+
+    sp = "" if compact else " " * current_indent
+    child_sp = "" if compact else " " * (current_indent + indent)
+    nl = "" if compact else "\n"
+    delim_sep = ":" if compact else ": "
+    item_sep = "," if compact else ", "
+
+    if isinstance(val, dict):
+        if not val:
+            return f"{DIM}{{}}{RESET}"
+        lines = [f"{DIM}{{{RESET}"]
+        items = list(val.items())
+        for i, (k, v) in enumerate(items):
+            comma = f"{DIM},{RESET}" if i < len(items) - 1 else ""
+            k_str = f"{BOLD_CYAN}\"{k}\"{RESET}{delim_sep}"
+            v_str = colorize_json(
+                v,
+                color_enabled=True,
+                compact=compact,
+                indent=indent,
+                current_indent=current_indent + indent,
+                key_name=k,
+            )
+            sep = comma + ("" if compact else "")
+            lines.append(f"{child_sp}{k_str}{v_str}{sep}")
+        lines.append(f"{sp}{DIM}}}{RESET}")
+        return nl.join(lines) if not compact else "".join(lines)
+
+    elif isinstance(val, list):
+        if not val:
+            return f"{DIM}[]{RESET}"
+        lines = [f"{DIM}[{RESET}"]
+        for i, item in enumerate(val):
+            comma = f"{DIM},{RESET}" if i < len(val) - 1 else ""
+            item_str = colorize_json(
+                item,
+                color_enabled=True,
+                compact=compact,
+                indent=indent,
+                current_indent=current_indent + indent,
+            )
+            lines.append(f"{child_sp}{item_str}{comma}")
+        lines.append(f"{sp}{DIM}]{RESET}")
+        return nl.join(lines) if not compact else "".join(lines)
+
+    elif isinstance(val, str):
+        if key_name == "level":
+            lvl = val.upper()
+            if "ERR" in lvl or "FATAL" in lvl:
+                c = BOLD_RED
+            elif "WARN" in lvl:
+                c = BOLD_YELLOW
+            elif "INFO" in lvl or "LOG" in lvl:
+                c = BOLD_GREEN
+            elif "DEBUG" in lvl:
+                c = BOLD_CYAN
+            else:
+                c = DIM
+            return f"{c}\"{val}\"{RESET}"
+
+        escaped = json.dumps(val, ensure_ascii=False)[1:-1]
+        return f"{GREEN}\"{escaped}\"{RESET}"
+
+    elif isinstance(val, bool):
+        return f"{BOLD_MAGENTA}{str(val).lower()}{RESET}"
+
+    elif val is None:
+        return f"{DIM}null{RESET}"
+
+    elif isinstance(val, (int, float)):
+        return f"{YELLOW}{val}{RESET}"
+
+    else:
+        escaped = json.dumps(str(val), ensure_ascii=False)
+        return f"{GREEN}{escaped}{RESET}"
+
+
+def count_balance(s, current_balance, in_string, escape):
+    """Tracks JSON bracket and brace balance across lines."""
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch in ("{", "["):
+                current_balance += 1
+            elif ch in ("}", "]"):
+                current_balance -= 1
+        i += 1
+    return current_balance, in_string, escape
+
+
+def parse_message_payload(msg):
+    """
+    Parses a React Native message into structured JSON if it contains
+    valid JSON, Hermes object notation, or prefixed JSON data.
+    """
+    msg_strip = msg.strip()
+
+    # Direct JSON object or array
+    if (msg_strip.startswith("{") and msg_strip.endswith("}")) or \
+       (msg_strip.startswith("[") and msg_strip.endswith("]")):
+        try:
+            return json.loads(msg_strip)
+        except Exception:
+            pass
+
+    # Hermes / JSC "Object { ... }" or "Array [ ... ]"
+    if msg_strip.startswith("Object ") and msg_strip[7:].strip().startswith("{"):
+        try:
+            return json.loads(msg_strip[7:].strip())
+        except Exception:
+            pass
+    if msg_strip.startswith("Array ") and msg_strip[6:].strip().startswith("["):
+        try:
+            return json.loads(msg_strip[6:].strip())
+        except Exception:
+            pass
+
+    # Quoted JSON: '{"foo": "bar"}' or "\"{"foo": "bar"}\""
+    if (msg_strip.startswith("'") and msg_strip.endswith("'")) or \
+       (msg_strip.startswith('"') and msg_strip.endswith('"')):
+        inner = msg_strip[1:-1].strip()
+        if (inner.startswith("{") and inner.endswith("}")) or \
+           (inner.startswith("[") and inner.endswith("]")):
+            try:
+                return json.loads(inner)
+            except Exception:
+                pass
+
+    # Label: { ... } or Label: [ ... ]
+    if ":" in msg:
+        label, _, candidate = msg.partition(":")
+        candidate_strip = candidate.strip()
+        if (candidate_strip.startswith("{") and candidate_strip.endswith("}")) or \
+           (candidate_strip.startswith("[") and candidate_strip.endswith("]")):
+            try:
+                parsed = json.loads(candidate_strip)
+                return {"label": label.strip(), "data": parsed}
+            except Exception:
+                pass
+        elif candidate_strip.startswith("Object ") and candidate_strip[7:].strip().startswith("{"):
+            try:
+                parsed = json.loads(candidate_strip[7:].strip())
+                return {"label": label.strip(), "data": parsed}
+            except Exception:
+                pass
+
+    return msg
+
+
+def find_rn_package_name(start_dir=None):
+    """Auto-detects React Native Android package name from current or ancestor directories."""
+    cur = os.path.abspath(start_dir or os.getcwd())
+    while True:
+        # Check android/app/build.gradle and build.gradle.kts
+        for gradle_path in [
+            os.path.join(cur, "android", "app", "build.gradle"),
+            os.path.join(cur, "android", "app", "build.gradle.kts"),
+        ]:
+            if os.path.isfile(gradle_path):
+                try:
+                    with open(gradle_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    m = re.search(r'applicationId\s+["\']([^"\']+)["\']', content)
+                    if m and not m.group(1).startswith("${"):
+                        return m.group(1)
+                    m = re.search(r'namespace\s+["\']([^"\']+)["\']', content)
+                    if m:
+                        return m.group(1)
+                except Exception:
+                    pass
+
+        # Check AndroidManifest.xml
+        for manifest_path in [
+            os.path.join(cur, "android", "app", "src", "main", "AndroidManifest.xml"),
+            os.path.join(cur, "android", "src", "main", "AndroidManifest.xml"),
+        ]:
+            if os.path.isfile(manifest_path):
+                try:
+                    with open(manifest_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    m = re.search(r'package\s*=\s*["\']([^"\']+)["\']', content)
+                    if m:
+                        return m.group(1)
+                except Exception:
+                    pass
+
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+
+    return None
+
+
+def get_connected_devices():
+    """Returns list of connected ADB device serials."""
+    try:
+        out = subprocess.check_output(["adb", "devices"], text=True, errors="replace")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    lines = [l.strip() for l in out.splitlines()[1:] if l.strip()]
+    devices = [l.split()[0] for l in lines if "\tdevice" in l or " device" in l]
+    return devices
+
+
+def get_device_model(device_serial):
+    """Gets friendly product model for a connected device."""
+    try:
+        cmd = ["adb"]
+        if device_serial:
+            cmd.extend(["-s", device_serial])
+        cmd.extend(["shell", "getprop", "ro.product.model"])
+        out = subprocess.check_output(cmd, text=True, errors="replace").strip()
+        return out if out else device_serial
+    except Exception:
+        return device_serial or "Android Device"
+
+
+def get_package_pid(package_name, device_serial=None):
+    """Gets currently running PID for package."""
+    try:
+        cmd = ["adb"]
+        if device_serial:
+            cmd.extend(["-s", device_serial])
+        cmd.extend(["shell", "pidof", "-s", package_name])
+        out = subprocess.check_output(cmd, text=True, errors="replace").strip()
+        if out and out.isdigit():
+            return int(out)
+    except Exception:
+        pass
+    return None
+
+
+# ----------------------------------------------------------------------
+# Log Processing Engine
+# ----------------------------------------------------------------------
+class LogProcessor:
+    def __init__(self, args, target_pkg=None, target_pid=None, color_enabled=True):
+        self.args = args
+        self.target_pkg = target_pkg
+        self.target_pid = target_pid
+        self.color_enabled = color_enabled
+
+        self.cur_entry = None
+        self.balance = 0
+        self.in_str = False
+        self.esc = False
+        self.last_pid_check = 0
+
+    def matches_filter(self, tag, pid_val):
+        if self.args.all:
+            return True
+
+        # Custom tag specified
+        if self.args.tag:
+            return bool(re.search(self.args.tag, tag, re.IGNORECASE))
+
+        # Matches app PID
+        if self.target_pid and pid_val == self.target_pid:
+            return True
+
+        # Matches React Native standard runtime tags
+        if RN_TAG_REGEX.match(tag):
+            return True
+
+        return False
+
+    def emit_entry(self, entry):
+        if not entry:
+            return
+
+        raw_msg = "\n".join(entry["messages"])
+        parsed_payload = parse_message_payload(raw_msg)
+
+        if self.args.msg_only and (isinstance(parsed_payload, (dict, list))):
+            output_obj = parsed_payload
+        else:
+            output_obj = {
+                "timestamp": entry["timestamp"],
+                "level": entry["level"],
+                "tag": entry["tag"],
+                "pid": entry["pid"],
+            }
+            if entry.get("tid") is not None:
+                output_obj["tid"] = entry["tid"]
+            output_obj["message"] = parsed_payload
+
+        colorized = colorize_json(
+            output_obj,
+            color_enabled=self.color_enabled,
+            compact=self.args.compact,
+            indent=2,
+        )
+        try:
+            sys.stdout.write(colorized + "\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            try:
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(devnull, sys.stdout.fileno())
+            except Exception:
+                pass
+            os._exit(0)
+
+    def process_line(self, line):
+        line = line.rstrip("\r\n")
+        if not line:
+            return
+
+        # Check for package start proc to auto-update target_pid dynamically
+        if self.target_pkg and ("Start proc" in line or "Zygote" in line):
+            m_proc = re.search(r"Start proc (\d+):" + re.escape(self.target_pkg), line)
+            if m_proc:
+                self.target_pid = int(m_proc.group(1))
+
+        # Check raw JSON directly (e.g. from Metro or raw JSON stream)
+        line_strip = line.strip()
+        if (line_strip.startswith("{") and line_strip.endswith("}")) or \
+           (line_strip.startswith("[") and line_strip.endswith("]")):
+            try:
+                parsed_json = json.loads(line_strip)
+                if self.cur_entry:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
+                self.emit_entry({
+                    "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
+                    "level": "INFO",
+                    "tag": "JSON",
+                    "pid": os.getpid(),
+                    "messages": [line_strip],
+                })
+                return
+            except Exception:
+                pass
+
+        # Try logcat threadtime format
+        m_tt = THREADTIME_RE.match(line)
+        if m_tt:
+            dt, pid_str, tid_str, lvl, tag, msg = m_tt.groups()
+            pid_val = int(pid_str)
+            tid_val = int(tid_str)
+
+            if not self.matches_filter(tag, pid_val):
+                if self.cur_entry:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
+                return
+
+            if self.cur_entry is not None:
+                is_same_call = (
+                    self.cur_entry["pid"] == pid_val
+                    and self.cur_entry["tid"] == tid_val
+                    and self.cur_entry["tag"] == tag
+                    and (self.balance > 0 or self.cur_entry["timestamp"] == dt)
+                )
+                if is_same_call:
+                    self.cur_entry["messages"].append(msg)
+                    self.balance, self.in_str, self.esc = count_balance(
+                        msg, self.balance, self.in_str, self.esc
+                    )
+                    if self.balance == 0:
+                        self.emit_entry(self.cur_entry)
+                        self.cur_entry = None
+                    return
+                else:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
+
+            self.cur_entry = {
+                "timestamp": dt,
+                "level": LEVEL_MAP.get(lvl, lvl),
+                "tag": tag,
+                "pid": pid_val,
+                "tid": tid_val,
+                "messages": [msg],
+            }
+            self.balance, self.in_str, self.esc = count_balance(msg, 0, False, False)
+            if self.balance == 0:
+                # May have non-header continuation lines; wait for next line or select timeout
+                pass
+            return
+
+        # Try logcat time format
+        m_t = TIME_RE.match(line)
+        if m_t:
+            dt, lvl, tag, pid_str, msg = m_t.groups()
+            pid_val = int(pid_str)
+
+            if not self.matches_filter(tag, pid_val):
+                if self.cur_entry:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
+                return
+
+            if self.cur_entry is not None:
+                self.emit_entry(self.cur_entry)
+                self.cur_entry = None
+
+            self.cur_entry = {
+                "timestamp": dt,
+                "level": LEVEL_MAP.get(lvl, lvl),
+                "tag": tag,
+                "pid": pid_val,
+                "messages": [msg],
+            }
+            self.balance, self.in_str, self.esc = count_balance(msg, 0, False, False)
+            return
+
+        # Try Metro format (e.g. LOG Running "app" with {...})
+        m_metro = METRO_RE.match(line)
+        if m_metro:
+            lvl, msg = m_metro.groups()
+            if self.cur_entry:
+                self.emit_entry(self.cur_entry)
+                self.cur_entry = None
+
+            self.cur_entry = {
+                "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
+                "level": "INFO" if lvl == "LOG" else lvl,
+                "tag": "Metro",
+                "pid": os.getpid(),
+                "messages": [msg],
+            }
+            self.balance, self.in_str, self.esc = count_balance(msg, 0, False, False)
+            return
+
+        # Continuation line without header (e.g. stack trace or multi-line output)
+        if self.cur_entry:
+            self.cur_entry["messages"].append(line)
+            if self.balance > 0:
+                self.balance, self.in_str, self.esc = count_balance(
+                    line, self.balance, self.in_str, self.esc
+                )
+                if self.balance == 0:
+                    self.emit_entry(self.cur_entry)
+                    self.cur_entry = None
+        else:
+            # Fallback line
+            if self.args.all or (self.target_pkg and self.target_pkg in line):
+                self.emit_entry({
+                    "timestamp": datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3],
+                    "level": "INFO",
+                    "tag": "stdout",
+                    "pid": 0,
+                    "messages": [line],
+                })
+
+    def flush(self):
+        if self.cur_entry:
+            self.emit_entry(self.cur_entry)
+            self.cur_entry = None
+
+
+# ----------------------------------------------------------------------
+# Main Entry Point
+# ----------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        prog="rn-logs",
+        description="Stream and display React Native logs in structured, color-coded JSON format.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  rn-logs                 # Stream React Native logs for current project/device
+  rn-logs -c              # Clear logcat first, then stream
+  rn-logs app.surfari.mobile
+  rn-logs -p com.example.app -c
+  rn-logs -m              # Show only inner JSON payload when message is JSON
+  rn-logs --compact       # One-line compact JSON output
+  rn-logs --no-color      # Output plain uncolored JSON
+  adb logcat | rn-logs    # Process logs from pipe
+        """,
+    )
+
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Optional package name (e.g. app.surfari.mobile) or tag to filter",
+    )
+    parser.add_argument(
+        "-p", "--package",
+        dest="package",
+        default=None,
+        help="Filter by specific Android package name",
+    )
+    parser.add_argument(
+        "-t", "--tag",
+        dest="tag",
+        default=None,
+        help="Filter by specific log tag (regex)",
+    )
+    parser.add_argument(
+        "-c", "--clear",
+        action="store_true",
+        help="Clear logcat buffer before streaming (adb logcat -c)",
+    )
+    parser.add_argument(
+        "-m", "--msg-only",
+        action="store_true",
+        help="Show only the inner JSON message payload when message is JSON",
+    )
+    parser.add_argument(
+        "-1", "--compact",
+        action="store_true",
+        help="Output compact single-line JSON instead of indented",
+    )
+    parser.add_argument(
+        "--color",
+        action="store_true",
+        help="Force ANSI color coding on output",
+    )
+    parser.add_argument(
+        "--no-color", "--raw",
+        action="store_true",
+        dest="no_color",
+        help="Disable ANSI color coding (output pure JSON)",
+    )
+    parser.add_argument(
+        "-a", "--all",
+        action="store_true",
+        help="Do not filter; show all system logs in JSON format",
+    )
+    parser.add_argument(
+        "-s", "--device",
+        dest="device",
+        default=None,
+        help="Specific ADB device serial to connect to",
+    )
+
+    args = parser.parse_args()
+
+    # Graceful SIGINT (Ctrl+C) handling
+    signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(0))
+    signal.signal(signal.SIGTERM, lambda sig, frame: sys.exit(0))
+
+    color_on = is_color_enabled(args)
+
+    # Determine target package
+    package_name = args.package
+    if not package_name and args.target:
+        if "." in args.target:
+            package_name = args.target
+        elif not args.tag:
+            args.tag = args.target
+
+    if not package_name and not args.all:
+        package_name = find_rn_package_name()
+
+    # Check if reading from pipe
+    is_piped = not sys.stdin.isatty()
+
+    if is_piped:
+        processor = LogProcessor(args, target_pkg=package_name, color_enabled=color_on)
+        try:
+            while True:
+                # Use select with 50ms timeout for responsive flushing
+                readable, _, _ = select.select([sys.stdin], [], [], 0.05)
+                if readable:
+                    line = sys.stdin.readline()
+                    if not line:
+                        break
+                    processor.process_line(line)
+                else:
+                    processor.flush()
+            processor.flush()
+        except (KeyboardInterrupt, BrokenPipeError):
+            pass
+        return
+
+    # Interactive ADB mode
+    if not shutil.which("adb"):
+        err = f"{BOLD_RED}Error:{RESET} 'adb' not found in PATH.\nMake sure Android SDK platform-tools is installed."
+        print(err if color_on else "Error: 'adb' not found in PATH.")
+        sys.exit(1)
+
+    devices = get_connected_devices()
+    if not devices:
+        msg = (
+            f"{BOLD_RED}❌ No Android device or emulator connected via adb.{RESET}\n"
+            f"{YELLOW}💡 Connect a device with USB debugging enabled or launch an emulator.{RESET}\n"
+            f"   Check connected devices with: {BOLD}adb devices{RESET}"
+        )
+        print(msg if color_on else "No Android device or emulator connected via adb.")
+        sys.exit(1)
+
+    device_serial = args.device or devices[0]
+    device_model = get_device_model(device_serial)
+
+    # Clear logcat if requested
+    if args.clear:
+        try:
+            cmd_clear = ["adb"]
+            if device_serial:
+                cmd_clear.extend(["-s", device_serial])
+            cmd_clear.extend(["logcat", "-c"])
+            subprocess.run(cmd_clear, check=True)
+            if color_on:
+                print(f"{BOLD_GREEN}✓{RESET} Cleared logcat buffer on {device_model} ({device_serial})")
+            else:
+                print(f"Cleared logcat buffer on {device_model} ({device_serial})")
+        except subprocess.CalledProcessError:
+            pass
+
+    # Resolve PID if package known
+    target_pid = None
+    if package_name:
+        target_pid = get_package_pid(package_name, device_serial)
+
+    # Print startup banner
+    if color_on:
+        dev_info = f"{BOLD_CYAN}📱 Device:{RESET} {device_model} {DIM}({device_serial}){RESET}"
+        if package_name:
+            pid_str = f"{BOLD_GREEN}PID: {target_pid}{RESET}" if target_pid else f"{DIM}(not running){RESET}"
+            pkg_info = f"{BOLD_CYAN}📦 Package:{RESET} {BOLD}{package_name}{RESET} {pid_str}"
+        elif args.tag:
+            pkg_info = f"{BOLD_CYAN}🏷️  Tag Filter:{RESET} {BOLD}{args.tag}{RESET}"
+        else:
+            pkg_info = f"{BOLD_CYAN}⚡ Filter:{RESET} {DIM}React Native Runtime (ReactNative, ReactNativeJS, BridgelessReact...){RESET}"
+
+        status_info = f"{BOLD_YELLOW}⚡ Streaming logs in color-coded JSON format...{RESET} {DIM}(Ctrl+C to stop){RESET}\n"
+        print(f"{dev_info}\n{pkg_info}\n{status_info}")
+    else:
+        print(f"Device: {device_model} ({device_serial})")
+        if package_name:
+            print(f"Package: {package_name} (PID: {target_pid or 'not running'})")
+        print("Streaming logs in JSON format... (Ctrl+C to stop)\n")
+
+    # Start adb logcat process
+    cmd_logcat = ["adb"]
+    if device_serial:
+        cmd_logcat.extend(["-s", device_serial])
+    cmd_logcat.extend(["logcat", "-v", "threadtime"])
+
+    proc = subprocess.Popen(
+        cmd_logcat,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        errors="replace",
+    )
+
+    processor = LogProcessor(
+        args,
+        target_pkg=package_name,
+        target_pid=target_pid,
+        color_enabled=color_on,
+    )
+
+    try:
+        while True:
+            # Poll with select to allow 50ms buffer flushing
+            readable, _, _ = select.select([proc.stdout], [], [], 0.05)
+            if readable:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                processor.process_line(line)
+            else:
+                processor.flush()
+
+    except (KeyboardInterrupt, BrokenPipeError):
+        pass
+    finally:
+        processor.flush()
+        try:
+            proc.terminate()
+            proc.wait(timeout=1)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()
