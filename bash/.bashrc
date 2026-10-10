@@ -89,6 +89,12 @@ rn-logs() {
         return 1
     fi
 }
+rnlog() {
+    rn-logs "$@"
+}
+rnlogs() {
+    rn-logs "$@"
+}
 alias rnlog='rn-logs'
 alias rnlogs='rn-logs'
 
