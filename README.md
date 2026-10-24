@@ -15,6 +15,17 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 ├── git/
 │   ├── .gitconfig                  # Global git configuration
 │   └── .gitignore_global           # Global gitignore rules
+├── hypr/
+│   └── .config/hypr/               # Hyprland window manager & Omarchy config
+│       ├── hyprland.lua            # Main Hyprland entry point
+│       ├── looknfeel.lua           # Aesthetics (animations, borders, blur, cursor)
+│       ├── monitors.lua            # Display resolutions & refresh rates
+│       ├── input.lua               # Keyboard, mouse, & gestures
+│       ├── bindings.lua            # Keybindings
+│       ├── autostart.lua           # Background processes on startup
+│       ├── hyprsunset.conf         # Blue light filter configuration
+│       ├── xdph.conf               # XDG Desktop Portal Hyprland config
+│       └── .luarc.json             # Lua language server settings
 ├── starship/
 │   └── .config/starship.toml       # Starship prompt configuration
 ├── install.sh                      # GNU Stow automated installer & backup script
@@ -36,6 +47,9 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 - `~/.gitignore_global` -> `~/dotfiles/git/.gitignore_global`
 - `~/.config/git/config` -> `~/dotfiles/git/.gitconfig` *(compatibility)*
 - `~/.config/git/ignore` -> `~/dotfiles/git/.gitignore_global` *(compatibility)*
+
+### Hyprland (`hypr` package)
+- `~/.config/hypr/` -> `~/dotfiles/hypr/.config/hypr/` (managed via individual symlinks)
 
 ### Starship (`starship` package)
 - `~/.config/starship.toml` -> `~/dotfiles/starship/.config/starship.toml`
@@ -71,5 +85,5 @@ cd ~/dotfiles
 
 ```bash
 cd ~/dotfiles
-stow --no-folding --restow -t ~ bash git starship
+stow --no-folding --restow -t ~ bash git starship hypr
 ```
