@@ -26,8 +26,6 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 │       ├── hyprsunset.conf         # Blue light filter configuration
 │       ├── xdph.conf               # XDG Desktop Portal Hyprland config
 │       └── .luarc.json             # Lua language server settings
-├── starship/
-│   └── .config/starship.toml       # Starship prompt configuration
 ├── install.sh                      # GNU Stow automated installer & backup script
 ├── README.md                       # Documentation
 └── .gitignore                      # Dotfiles repository gitignore
@@ -50,9 +48,6 @@ Personal dotfiles and configuration files managed with [GNU Stow](https://www.gn
 
 ### Hyprland (`hypr` package)
 - `~/.config/hypr/` -> `~/dotfiles/hypr/.config/hypr/` (managed via individual symlinks)
-
-### Starship (`starship` package)
-- `~/.config/starship.toml` -> `~/dotfiles/starship/.config/starship.toml`
 
 ### Repository Link
 - `~/.dotfiles` -> `~/dotfiles`
@@ -85,5 +80,5 @@ cd ~/dotfiles
 
 ```bash
 cd ~/dotfiles
-stow --no-folding --restow -t ~ bash git starship hypr
+stow --no-folding --restow -t ~ bash git hypr
 ```
